@@ -140,26 +140,36 @@ st.dataframe(best_df, use_container_width=True)
 
 st.divider()
 
-# ---------------- CHARTS ----------------
-st.subheader("📊 Workout Performance Insights")
+# ---------------- TOP 4 PER WORKOUT ----------------
+st.subheader("🏆 Top 4 Performers Per Workout")
 
-if workout != "All":
-    w_col = f"w{workout[-1]}_rank"
+workouts = [
+    ("Workout 1", "w1_rank"),
+    ("Workout 2", "w2_rank"),
+    ("Workout 3", "w3_rank"),
+    ("Workout 4", "w4_rank"),
+]
 
-    if w_col in filtered_df.columns:
-        st.write(f"{workout} Ranking Distribution")
-        st.bar_chart(filtered_df[w_col])
-else:
-    st.write("Average Rank Per Workout")
+cols = st.columns(4)
 
-    avg_ranks = {}
-    for w in workouts:
-        if w in filtered_df.columns:
-            avg_ranks[w] = filtered_df[w].mean()
+for idx, (label, col_name) in enumerate(workouts):
+    with cols[idx]:
+        st.markdown(f"### {label}")
 
-    avg_df = pd.DataFrame.from_dict(avg_ranks, orient="index", columns=["Average Rank"])
-    st.bar_chart(avg_df)
+        if col_name in filtered_df.columns:
+            top4 = filtered_df.nsmallest(4, col_name)
 
+            # Display nicely
+            for i, row in top4.iterrows():
+                st.markdown(
+                    f"""
+                    **#{row[col_name]}**  
+                    {row['name']}  
+                    *{row['division']}*
+                    """
+                )
+        else:
+            st.write("No data")
 # ---------------- AUTO REFRESH ----------------
 time.sleep(60)
 st.rerun()
