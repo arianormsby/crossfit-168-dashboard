@@ -117,31 +117,8 @@ st.dataframe(filtered_df[existing_cols], use_container_width=True)
 
 st.divider()
 
-# ---------------- BEST PER WORKOUT ----------------
-st.subheader("🏆 Best Performance Per Workout")
-
-workouts = ["w1_rank", "w2_rank", "w3_rank", "w4_rank"]
-
-best_data = []
-
-for w in workouts:
-    if w in filtered_df.columns:
-        best_row = filtered_df.loc[filtered_df[w].idxmin()]
-        best_data.append({
-            "Workout": w.replace("_rank", "").upper(),
-            "Athlete": best_row["name"],
-            "Division": best_row["division"],
-            "Rank": best_row[w]
-        })
-
-best_df = pd.DataFrame(best_data)
-
-st.dataframe(best_df, use_container_width=True)
-
-st.divider()
-
-# ---------------- TOP 4 PER WORKOUT ----------------
-st.subheader("🏆 Top 4 Performers Per Workout")
+# ---------------- TOP 4 PER WORKOUT (MALE + FEMALE) ----------------
+st.subheader("🏆 Top 4 Performers Per Workout (Male & Female)")
 
 workouts = [
     ("Workout 1", "w1_rank"),
@@ -150,26 +127,52 @@ workouts = [
     ("Workout 4", "w4_rank"),
 ]
 
-cols = st.columns(4)
+for label, col_name in workouts:
+    st.markdown(f"## {label}")
 
-for idx, (label, col_name) in enumerate(workouts):
-    with cols[idx]:
-        st.markdown(f"### {label}")
+    col1, col2 = st.columns(2)
 
-        if col_name in filtered_df.columns:
-            top4 = filtered_df.nsmallest(4, col_name)
+    # ---------------- MALE ----------------
+    with col1:
+        st.markdown("### 👨 Male")
 
-            # Display nicely
-            for i, row in top4.iterrows():
+        male_df = filtered_df[filtered_df["division"] == "Male"]
+
+        if col_name in male_df.columns and not male_df.empty:
+            top4_male = male_df.nsmallest(4, col_name)
+
+            for _, row in top4_male.iterrows():
                 st.markdown(
                     f"""
                     **#{row[col_name]}**  
                     {row['name']}  
-                    *{row['division']}*
+                    *{row['affiliate']}*
                     """
                 )
         else:
             st.write("No data")
+
+    # ---------------- FEMALE ----------------
+    with col2:
+        st.markdown("### 👩 Female")
+
+        female_df = filtered_df[filtered_df["division"] == "Female"]
+
+        if col_name in female_df.columns and not female_df.empty:
+            top4_female = female_df.nsmallest(4, col_name)
+
+            for _, row in top4_female.iterrows():
+                st.markdown(
+                    f"""
+                    **#{row[col_name]}**  
+                    {row['name']}  
+                    *{row['affiliate']}*
+                    """
+                )
+        else:
+            st.write("No data")
+
+    st.divider()
 # ---------------- AUTO REFRESH ----------------
 time.sleep(60)
 st.rerun()
