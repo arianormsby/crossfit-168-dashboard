@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+from datetime import datetime
 
-st.set_page_config(page_title="CrossFit Leaderboard", layout="wide")
+st.set_page_config(page_title="CrossFit 168 Dashboard", layout="wide")
 
 BASE_URL = "https://c3po.crossfit.com/api/leaderboards/v2/competitions/quarterfinals/2026/leaderboards"
 
@@ -15,9 +16,34 @@ headers = {
 }
 
 st.title("🏋️ CrossFit 168 – Performance Dashboard")
-st.caption("Auto-refreshes every 60 seconds")
 
-@st.cache_data(ttl=60)
+# ---------------- REFRESH CONTROLS ----------------
+st.markdown("### 🔄 Data Controls")
+
+col1, col2 = st.columns([1, 3])
+
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+# Manual refresh
+with col1:
+    if st.button("🔄 Refresh Now"):
+        st.session_state.last_refresh = time.time()
+        st.rerun()
+
+# Last updated
+last_updated = datetime.fromtimestamp(st.session_state.last_refresh).strftime("%H:%M:%S")
+
+with col2:
+    st.markdown(f"**Last updated:** {last_updated}")
+
+# Auto refresh every 30 minutes
+if time.time() - st.session_state.last_refresh > 1800:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
+
+# ---------------- DATA FETCH ----------------
+@st.cache_data(ttl=1800)
 def fetch_data():
     all_rows = []
 
@@ -53,7 +79,7 @@ def fetch_data():
                         "score": row.get("overallScore")
                     }
 
-                    # Add workouts
+                    # Workout data
                     for s in row.get("scores", []):
                         i = s.get("ordinal")
                         record[f"w{i}_rank"] = int(s.get("rank"))
@@ -74,14 +100,12 @@ df = fetch_data()
 st.sidebar.header("Filters")
 
 division = st.sidebar.selectbox("Division", ["All", "Male", "Female"])
-affiliate = st.sidebar.selectbox(
-    "Affiliate",
-    ["All"] + sorted(df["affiliate"].dropna().unique().tolist())
-)
-workout = st.sidebar.selectbox(
-    "Workout Focus",
-    ["All", "Workout 1", "Workout 2", "Workout 3", "Workout 4"]
-)
+
+affiliate_list = ["All"]
+if not df.empty:
+    affiliate_list += sorted(df["affiliate"].dropna().unique().tolist())
+
+affiliate = st.sidebar.selectbox("Affiliate", affiliate_list)
 
 filtered_df = df.copy()
 
@@ -95,6 +119,7 @@ filtered_df = filtered_df.sort_values("rank")
 
 # ---------------- METRICS ----------------
 col1, col2 = st.columns(2)
+
 col1.metric("Athletes", len(filtered_df))
 col2.metric("Best Rank", filtered_df["rank"].min() if not filtered_df.empty else "-")
 
@@ -117,62 +142,59 @@ st.dataframe(filtered_df[existing_cols], use_container_width=True)
 
 st.divider()
 
-# ---------------- TOP 4 PER WORKOUT (MALE + FEMALE) ----------------
-st.subheader("🏆 Top 4 Performers Per Workout (Male & Female)")
+# ---------------- TOP 4 PER WORKOUT ----------------
+st.subheader("🏆 Top 4 Performers Per Workout")
 
 workouts = [
-    ("Workout 1", "w1_rank"),
-    ("Workout 2", "w2_rank"),
-    ("Workout 3", "w3_rank"),
-    ("Workout 4", "w4_rank"),
+    ("Workout 1", "w1_rank", "w1_score"),
+    ("Workout 2", "w2_rank", "w2_score"),
+    ("Workout 3", "w3_rank", "w3_score"),
+    ("Workout 4", "w4_rank", "w4_score"),
 ]
 
-for label, col_name in workouts:
+medals = ["🥇", "🥈", "🥉", "4️⃣"]
+
+for label, rank_col, score_col in workouts:
     st.markdown(f"## {label}")
 
     col1, col2 = st.columns(2)
 
-    # ---------------- MALE ----------------
+    # Male
     with col1:
         st.markdown("### 👨 Male")
-
         male_df = filtered_df[filtered_df["division"] == "Male"]
 
-        if col_name in male_df.columns and not male_df.empty:
-            top4_male = male_df.nsmallest(4, col_name)
+        if rank_col in male_df.columns and not male_df.empty:
+            top4 = male_df.nsmallest(4, rank_col).reset_index(drop=True)
 
-            for _, row in top4_male.iterrows():
+            for i, row in top4.iterrows():
                 st.markdown(
                     f"""
-                    **#{row[col_name]}**  
-                    {row['name']}  
-                    *{row['affiliate']}*
+                    {medals[i]} **#{row[rank_col]} – {row['name']}**  
+                    🏢 {row['affiliate']}  
+                    ⏱ {row.get(score_col, '')}
                     """
                 )
         else:
             st.write("No data")
 
-    # ---------------- FEMALE ----------------
+    # Female
     with col2:
         st.markdown("### 👩 Female")
-
         female_df = filtered_df[filtered_df["division"] == "Female"]
 
-        if col_name in female_df.columns and not female_df.empty:
-            top4_female = female_df.nsmallest(4, col_name)
+        if rank_col in female_df.columns and not female_df.empty:
+            top4 = female_df.nsmallest(4, rank_col).reset_index(drop=True)
 
-            for _, row in top4_female.iterrows():
+            for i, row in top4.iterrows():
                 st.markdown(
                     f"""
-                    **#{row[col_name]}**  
-                    {row['name']}  
-                    *{row['affiliate']}*
+                    {medals[i]} **#{row[rank_col]} – {row['name']}**  
+                    🏢 {row['affiliate']}  
+                    ⏱ {row.get(score_col, '')}
                     """
                 )
         else:
             st.write("No data")
 
     st.divider()
-# ---------------- AUTO REFRESH ----------------
-time.sleep(60)
-st.rerun()
