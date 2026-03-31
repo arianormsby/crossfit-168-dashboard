@@ -1,0 +1,27 @@
+division,overallRank,overallScore,competitorName,firstName,lastName,gender,age,height,weight,country,affiliate,w1_rank,w1_score,w2_rank,w2_score,w3_rank,w3_score,w4_rank,w4_score
+Female,88,429,Olivia Rudan Deng,Olivia Rudan,Deng,F,26,155 cm,50 kg,China,CrossFit 168 Alexandria,86,7:50,43,8:50,114,6:20,186,15:27
+Female,196,921,Sofia Munoz,Sofia,Munoz,F,26,,,Colombia,CrossFit 168 Alexandria,320,9:19,149,10:56,260,7:37,192,15:33
+Female,203,940,Peyton Cassar,Peyton,Cassar,F,28,,,Australia,CrossFit 168,180,8:37,114,10:24,344,8:23,302,17:19
+Female,208,958,Erika Opali,Erika,Opali,F,41,160 cm,55 kg,Australia,CrossFit 168 II,181,8:38,202,11:44,386,8:43,189,15:29
+Female,377,1767,Niamh McConnell,Niamh,McConnell,F,26,,,Ireland,CrossFit 168 Alexandria,328,9:23,241,12:12,386,8:43,812,50 reps
+Female,703,2775,Megan Moynihan,Megan,Moynihan,F,33,,,Ireland,CrossFit 168 Alexandria,648,10:55,892,80 reps,429,9:00,806,50 reps
+Female,763,2950,Nicole Chaves,Nicole,Chaves,F,31,,,Costa Rica,CrossFit 168,553,10:28,1083,80 reps,1101,183 reps,213,15:42
+Female,1044,3818,Francesca Ehmig,Francesca,Ehmig,F,39,164 cm,,Australia,CrossFit 168 Alexandria,1114,10 reps,1059,80 reps,528,9:44,1117,10 reps
+Female,1082,4030,Irah Rosete,Irah,Rosete,F,41,,,Australia,CrossFit 168 Alexandria,955,107 reps,1045,80 reps,954,350 reps,1076,50 reps
+Male,18,105,Khan Porter,Khan,Porter,M,36,183 cm,205 lb,Australia,CrossFit 168 Alexandria,33,6:45,41,8:29,28,4:39,3,10:04
+Male,81,383,Juan David Sanchez Orrego,Juan David,Sanchez Orrego,M,26,174 cm,86 kg,Colombia,CrossFit 168 Alexandria,155,7:48,78,9:24,103,5:39,47,11:15
+Male,165,786,Marcus Bremner,Marcus,Bremner,M,34,,,Australia,CrossFit 168 II,155,7:48,259,11:39,140,5:58,232,13:30
+Male,240,1199,Mitchell Park,Mitchell,Park,M,23,,,New Zealand,CrossFit 168 Alexandria,276,8:25,264,11:42,473,8:23,186,13:10
+Male,263,1291,Bradley Roberts,Bradley,Roberts,M,31,69 in,79 kg,United Kingdom,CrossFit 168 Alexandria,364,8:48,280,11:48,410,8:01,237,13:32
+Male,304,1450,Adrien Le Roux,Adrien,Le Roux,M,40,179 cm,79 kg,France,CrossFit 168 II,196,8:03,477,13:20,545,8:46,232,13:30
+Male,350,1606,Matthew McArdle,Matthew,McArdle,M,24,185 cm,83 kg,Ireland,CrossFit 168 Alexandria,659,9:53,466,13:13,347,7:36,134,12:42
+Male,376,1686,Joaquín Sebastian Bernal Garcia,Joaquín Sebastian,Bernal Garcia,M,26,174 cm,78 kg,Colombia,CrossFit 168 Alexandria,550,9:27,186,10:57,569,8:55,381,14:38
+Male,378,1690,Christopher Hampton,Christopher,Hampton,M,33,,100 kg,Australia,CrossFit 168 Alexandria,842,10:50,176,10:50,72,5:19,600,16:51
+Male,630,2544,Ben Walsh,Ben,Walsh,M,32,179 cm,88 kg,Ireland,CrossFit 168 Alexandria,946,11:49,253,11:36,314,7:22,1031,55 reps
+Male,647,2592,Tom Kippenberger,Tom,Kippenberger,M,37,172 cm,77 kg,New Zealand,CrossFit 168,175,7:55,1064,,1061,,292,13:58
+Male,683,2725,Damien Beven,Damien,Beven,M,34,,,Australia,CrossFit 168 II,1004,110 reps,388,12:42,709,10:00,624,17:08
+Male,744,2913,Roy Beesley,Roy,Beesley,M,34,185 cm,,Australia,CrossFit 168 II,476,9:12,732,14:57,841,11:23,864,75 reps
+Male,771,2984,Arian Ormsby,Arian,Ormsby,M,40,181 cm,77 kg,Australia,CrossFit 168 II,686,9:59,472,13:16,952,353 reps,874,74 reps
+Male,1021,3693,Adam Hunter,Adam,Hunter,M,44,,,Australia,CrossFit 168 II,842,10:50,987,100 reps,1014,304 reps,850,77 reps
+Male,1036,3760,James Le,James,Le,M,35,,,Australia,CrossFit 168 II,1022,104 reps,757,118 reps,987,350 reps,994,63 reps
+Male,1075,4261,Enzo Destro,Enzo,Destro,M,28,,,Brazil,CrossFit 168 II,1067,,1064,,1061,,1069,
