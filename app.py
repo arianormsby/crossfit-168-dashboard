@@ -227,17 +227,72 @@ if event.selection.rows:
 
     st.markdown(f"🏢 {athlete['affiliate']} | 🌍 {athlete['country']}")
 
+    # ---- WORKOUT DATA ----
+    workout_data = []
+    for i in range(1, 5):
+        workout_data.append({
+            "Workout": f"W{i}",
+            "Rank": athlete.get(f"w{i}_rank"),
+            "Score": athlete.get(f"w{i}_score")
+        })
+
+    workout_df = pd.DataFrame(workout_data)
+
+# ---------------- ATHLETE COMPARISON ----------------
+st.divider()
+st.subheader("⚔️ Athlete Comparison")
+
+athletes = filtered_df["name"].unique()
+
+col1, col2 = st.columns(2)
+
+with col1:
+    athlete_1 = st.selectbox("Athlete 1", athletes, key="a1")
+
+with col2:
+    athlete_2 = st.selectbox("Athlete 2", athletes, key="a2")
+
+if athlete_1 and athlete_2:
+
+    a1 = filtered_df[filtered_df["name"] == athlete_1].iloc[0]
+    a2 = filtered_df[filtered_df["name"] == athlete_2].iloc[0]
+
+    comparison = []
+
+    for i in range(1, 5):
+        comparison.append({
+            "Workout": f"W{i}",
+            athlete_1: a1.get(f"w{i}_rank"),
+            athlete_2: a2.get(f"w{i}_rank")
+        })
+
+    comp_df = pd.DataFrame(comparison)
+
+    st.dataframe(comp_df, width="stretch")
+
+    st.subheader("📊 Comparison Chart")
+    st.bar_chart(comp_df.set_index("Workout"))
+
+    # ---- INSIGHTS ----
+    best = workout_df.loc[workout_df["Rank"].idxmin()]
+    worst = workout_df.loc[workout_df["Rank"].idxmax()]
+    consistency = workout_df["Rank"].var()
+
+    st.subheader("📊 Performance Insights")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Best Workout", f"{best['Workout']} (#{best['Rank']})")
+    c2.metric("Worst Workout", f"{worst['Workout']} (#{worst['Rank']})")
+    c3.metric("Consistency (Variance)", round(consistency, 2))
+
     st.subheader("Workout Breakdown")
 
     cols = st.columns(4)
-
     for i in range(1, 5):
         with cols[i-1]:
             st.markdown(f"### W{i}")
             st.metric("Rank", athlete.get(f"w{i}_rank"))
             st.write(athlete.get(f"w{i}_score"))
-
-st.divider()
 
 # ---------------- VISUALS ----------------
 
@@ -247,10 +302,15 @@ if visual_option == "Top 4 per Workout":
 
     medals = ["🥇", "🥈", "🥉", "4️⃣"]
 
-    workouts = ["w1_rank", "w2_rank", "w3_rank", "w4_rank"]
+    workouts = [
+        ("w1_rank", "w1_score"),
+        ("w2_rank", "w2_score"),
+        ("w3_rank", "w3_score"),
+        ("w4_rank", "w4_score")
+    ]
 
-    for w in workouts:
-        st.markdown(f"### {w.upper()}")
+    for rank_col, score_col in workouts:
+        st.markdown(f"### {rank_col.upper()}")
 
         col1, col2 = st.columns(2)
 
@@ -261,14 +321,14 @@ if visual_option == "Top 4 per Workout":
                 subset = filtered_df[filtered_df["division"] == div]
 
                 if not subset.empty:
-                    top4 = subset.nsmallest(4, w)
+                    top4 = subset.nsmallest(4, rank_col)
 
                     for j, (_, row) in enumerate(top4.iterrows()):
                         st.markdown(
-                            f"{medals[j]} {row['name']} (#{row[w]})"
+                            f"{medals[j]} **{row['name']}**  \n"
+                            f"Rank: #{row[rank_col]}  \n"
+                            f"Score: {row[score_col]}"
                         )
-                else:
-                    st.write("No data")
 
 elif visual_option == "Average Workout Rank":
 
