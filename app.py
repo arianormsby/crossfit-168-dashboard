@@ -107,9 +107,9 @@ def fetch_data(region, max_pages=None):
                     age = None
 
                 record = {
-                    "division": "Male" if division == 1 else "Female",
-                    "global_rank": int(row.get("overallRank")),
                     "name": entrant.get("competitorName"),
+                    "global_rank": int(row.get("overallRank")),
+                    "division": "Male" if division == 1 else "Female",
                     "affiliate": entrant.get("affiliateName"),
                     "country": entrant.get("countryOfOriginName"),
                     "age": age,
@@ -158,6 +158,34 @@ def age_bucket(age):
 
 df["age_group"] = df["age"].apply(age_bucket)
 
+# ---------------- PERCENTILE ----------------
+df["percentile"] = (1 - (df["global_rank"] / df["global_rank"].max())) * 100
+
+# ---------------- STRENGTH PROFILE ----------------
+def strength_profile(row):
+    ranks = [row[f"w{i}_rank"] for i in range(1,5)]
+    variance = pd.Series(ranks).var()
+
+    if variance < 50:
+        return "Balanced"
+    elif min(ranks) < 50:
+        return "Specialist"
+    else:
+        return "Inconsistent"
+
+df["profile"] = df.apply(strength_profile, axis=1)
+
+# ---------------- REORDER COLUMNS ----------------
+cols = list(df.columns)
+
+# Move global_rank after name
+cols.insert(1, cols.pop(cols.index("global_rank")))
+
+# Move age_group next to age
+cols.insert(cols.index("age")+1, cols.pop(cols.index("age_group")))
+
+df = df[cols]
+
 # ---------------- FILTERS ----------------
 st.sidebar.header("Filters")
 
@@ -192,50 +220,31 @@ if search:
 
 filtered_df = filtered_df.sort_values("global_rank")
 
-# ---------------- LOCAL RANKS ----------------
-for i in range(1, 5):
-    col = f"w{i}_rank"
-    if col in filtered_df:
-        filtered_df[f"w{i}_rank_local"] = filtered_df[col].rank(method="min").astype(int)
-        filtered_df[f"w{i}_delta"] = filtered_df[col] - filtered_df[f"w{i}_rank_local"]
-
 # ---------------- POSITION COLUMN ----------------
-filtered_df.insert(0, "position", range(1, len(filtered_df) + 1))
+filtered_df.insert(0, "position", range(1, len(filtered_df)+1))
 
 # ---------------- LEADERBOARD ----------------
 st.subheader("Leaderboard")
-
 st.dataframe(filtered_df, use_container_width=True)
 
 # ---------------- DRILLDOWN ----------------
 st.subheader("🔍 Athlete Breakdown")
 
 selected = st.selectbox("Select Athlete", filtered_df["name"].unique())
-
 athlete = filtered_df[filtered_df["name"] == selected].iloc[0]
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Global Rank", athlete["global_rank"])
-col2.metric("Age", athlete["age"])
-col3.metric("Division", athlete["division"])
+col1.metric("Rank", athlete["global_rank"])
+col2.metric("Percentile", f"{athlete['percentile']:.1f}%")
+col3.metric("Profile", athlete["profile"])
 
 st.markdown(f"🏢 {athlete['affiliate']} | 🌍 {athlete['country']}")
 
-# insights
-ranks = [athlete[f"w{i}_rank_local"] for i in range(1,5)]
-best = min(ranks)
-worst = max(ranks)
-
-st.write(f"Best Workout Rank: {best}")
-st.write(f"Worst Workout Rank: {worst}")
-
-# workouts
 cols = st.columns(4)
 for i in range(1,5):
     with cols[i-1]:
         st.markdown(f"### W{i}")
-        st.metric("Local", athlete[f"w{i}_rank_local"])
-        st.caption(f"Global: {athlete[f'w{i}_rank']}")
+        st.metric("Rank", athlete[f"w{i}_rank"])
         st.write(athlete[f"w{i}_score"])
 
 st.divider()
@@ -255,17 +264,14 @@ if visual_option == "Top 4 per Workout":
                 st.markdown(div)
                 subset = filtered_df[filtered_df["division"]==div]
 
-                top4 = subset.nsmallest(4,f"w{i}_rank_local")
+                top4 = subset.nsmallest(4,f"w{i}_rank")
 
                 for k, (_, row) in enumerate(top4.iterrows()):
-                    st.write(
-                        f"{medals[k]} {row['name']} "
-                        f"(L:{row[f'w{i}_rank_local']} / G:{row[f'w{i}_rank']})"
-                    )
+                    st.write(f"{medals[k]} {row['name']} (#{row[f'w{i}_rank']})")
 
 elif visual_option == "Average Workout Rank":
 
-    avg = {f"W{i}": filtered_df[f"w{i}_rank_local"].mean() for i in range(1,5)}
+    avg = {f"W{i}": filtered_df[f"w{i}_rank"].mean() for i in range(1,5)}
     st.bar_chart(pd.DataFrame.from_dict(avg, orient="index"))
 
 elif visual_option == "Rank Distribution":
