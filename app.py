@@ -35,13 +35,12 @@ region_options = {
 selected_region = st.sidebar.selectbox("Region", list(region_options.keys()), index=0)
 region_value = region_options[selected_region]
 
-# ---------------- WORLDWIDE OPTIONS ----------------
+# ---------------- WORLDWIDE CONTROL ----------------
 world_limit = None
 if selected_region == "Worldwide":
     st.warning("⚠️ Worldwide can take time to load")
 
     option = st.selectbox("Load size", ["Top 500", "Top 1000", "Full dataset"])
-
     limit_map = {"Top 500": 10, "Top 1000": 20, "Full dataset": None}
     world_limit = limit_map[option]
 
@@ -72,9 +71,6 @@ with col2:
 @st.cache_data(ttl=1800)
 def fetch_data(region, max_pages=None):
 
-    progress = st.progress(0)
-    status = st.empty()
-
     all_rows = []
 
     for division in [1, 2]:
@@ -102,11 +98,6 @@ def fetch_data(region, max_pages=None):
             if not rows:
                 break
 
-            total_pages = data["pagination"]["totalPages"]
-
-            progress.progress(min(page / total_pages, 1.0))
-            status.text(f"Loading page {page}/{total_pages}")
-
             for row in rows:
                 entrant = row.get("entrant", {})
 
@@ -117,7 +108,7 @@ def fetch_data(region, max_pages=None):
 
                 record = {
                     "division": "Male" if division == 1 else "Female",
-                    "rank": int(row.get("overallRank")),
+                    "global_rank": int(row.get("overallRank")),
                     "name": entrant.get("competitorName"),
                     "affiliate": entrant.get("affiliateName"),
                     "country": entrant.get("countryOfOriginName"),
@@ -131,13 +122,10 @@ def fetch_data(region, max_pages=None):
 
                 all_rows.append(record)
 
-            if page >= total_pages:
+            if page >= data["pagination"]["totalPages"]:
                 break
 
             page += 1
-
-    progress.empty()
-    status.empty()
 
     return pd.DataFrame(all_rows)
 
@@ -145,13 +133,11 @@ with st.spinner("Loading leaderboard..."):
     df = fetch_data(region_value, world_limit)
 
 df = df.convert_dtypes()
+df["age"] = pd.to_numeric(df["age"], errors="coerce")
 
 st.success(f"Loaded {len(df)} athletes")
 
-# ---------------- CLEAN AGE COLUMN ----------------
-df["age"] = pd.to_numeric(df["age"], errors="coerce")
-
-# ---------------- AGE BUCKET ----------------
+# ---------------- AGE GROUP ----------------
 def age_bucket(age):
     if pd.isna(age):
         return None
@@ -181,7 +167,6 @@ country = st.sidebar.multiselect("Country", sorted(df["country"].dropna().unique
 age_group = st.sidebar.multiselect("Age Group", ["Under 35","35-39","40-44","45-49","50-54","55+"])
 search = st.sidebar.text_input("Search Athlete")
 
-# ---------------- VIEW SELECTOR ----------------
 visual_option = st.sidebar.selectbox(
     "Visualisation",
     [
@@ -205,166 +190,86 @@ if age_group:
 if search:
     filtered_df = filtered_df[filtered_df["name"].str.contains(search, case=False)]
 
-filtered_df = filtered_df.sort_values("rank")
+filtered_df = filtered_df.sort_values("global_rank")
 
-# ---------------- RECALCULATE WORKOUT RANKS ----------------
+# ---------------- LOCAL RANKS ----------------
 for i in range(1, 5):
-    rank_col = f"w{i}_rank"
+    col = f"w{i}_rank"
+    if col in filtered_df:
+        filtered_df[f"w{i}_rank_local"] = filtered_df[col].rank(method="min").astype(int)
+        filtered_df[f"w{i}_delta"] = filtered_df[col] - filtered_df[f"w{i}_rank_local"]
 
-    if rank_col in filtered_df.columns:
-        filtered_df[rank_col] = (
-            filtered_df[rank_col]
-            .rank(method="min")
-            .astype(int)
-        )
-
-# ---------------- ADD POSITION COLUMN ----------------
+# ---------------- POSITION COLUMN ----------------
 filtered_df.insert(0, "position", range(1, len(filtered_df) + 1))
 
 # ---------------- LEADERBOARD ----------------
 st.subheader("Leaderboard")
 
-event = st.dataframe(
-    filtered_df,
-    width="stretch",
-    on_select="rerun",
-    selection_mode="single-row"
-)
+st.dataframe(filtered_df, use_container_width=True)
 
-# ---------------- ATHLETE DRILLDOWN ----------------
-if event.selection.rows:
-    athlete = filtered_df.iloc[event.selection.rows[0]]
+# ---------------- DRILLDOWN ----------------
+st.subheader("🔍 Athlete Breakdown")
 
-    st.divider()
-    st.subheader(f"🔍 {athlete['name']}")
+selected = st.selectbox("Select Athlete", filtered_df["name"].unique())
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Rank", athlete["rank"])
-    col2.metric("Age", athlete["age"])
-    col3.metric("Division", athlete["division"])
+athlete = filtered_df[filtered_df["name"] == selected].iloc[0]
 
-    st.markdown(f"🏢 {athlete['affiliate']} | 🌍 {athlete['country']}")
+col1, col2, col3 = st.columns(3)
+col1.metric("Global Rank", athlete["global_rank"])
+col2.metric("Age", athlete["age"])
+col3.metric("Division", athlete["division"])
 
-    # ---- WORKOUT DATA ----
-    workout_data = []
-    for i in range(1, 5):
-        workout_data.append({
-            "Workout": f"W{i}",
-            "Rank": athlete.get(f"w{i}_rank"),
-            "Score": athlete.get(f"w{i}_score")
-        })
+st.markdown(f"🏢 {athlete['affiliate']} | 🌍 {athlete['country']}")
 
-    workout_df = pd.DataFrame(workout_data)
+# insights
+ranks = [athlete[f"w{i}_rank_local"] for i in range(1,5)]
+best = min(ranks)
+worst = max(ranks)
 
+st.write(f"Best Workout Rank: {best}")
+st.write(f"Worst Workout Rank: {worst}")
 
+# workouts
+cols = st.columns(4)
+for i in range(1,5):
+    with cols[i-1]:
+        st.markdown(f"### W{i}")
+        st.metric("Local", athlete[f"w{i}_rank_local"])
+        st.caption(f"Global: {athlete[f'w{i}_rank']}")
+        st.write(athlete[f"w{i}_score"])
 
-    # ---- INSIGHTS ----
-    best = workout_df.loc[workout_df["Rank"].idxmin()]
-    worst = workout_df.loc[workout_df["Rank"].idxmax()]
-    consistency = workout_df["Rank"].var()
-
-    st.subheader("📊 Performance Insights")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Best Workout", f"{best['Workout']} (#{best['Rank']})")
-    c2.metric("Worst Workout", f"{worst['Workout']} (#{worst['Rank']})")
-    c3.metric("Consistency (Variance)", round(consistency, 2))
-
-    st.subheader("Workout Breakdown")
-
-    cols = st.columns(4)
-    for i in range(1, 5):
-        with cols[i-1]:
-            st.markdown(f"### W{i}")
-            st.metric("Rank", athlete.get(f"w{i}_rank"))
-            st.write(athlete.get(f"w{i}_score"))
-
-
-# ---------------- ATHLETE COMPARISON ----------------
 st.divider()
-st.subheader("⚔️ Athlete Comparison")
-
-athletes = filtered_df["name"].unique()
-
-col1, col2 = st.columns(2)
-
-with col1:
-    athlete_1 = st.selectbox("Athlete 1", athletes, key="a1")
-
-with col2:
-    athlete_2 = st.selectbox("Athlete 2", athletes, key="a2")
-
-if athlete_1 and athlete_2:
-
-    a1 = filtered_df[filtered_df["name"] == athlete_1].iloc[0]
-    a2 = filtered_df[filtered_df["name"] == athlete_2].iloc[0]
-
-    comparison = []
-
-    for i in range(1, 5):
-        comparison.append({
-            "Workout": f"W{i}",
-            athlete_1: a1.get(f"w{i}_rank"),
-            athlete_2: a2.get(f"w{i}_rank")
-        })
-
-    comp_df = pd.DataFrame(comparison)
-
-    st.dataframe(comp_df, width="stretch")
-
-    st.subheader("📊 Comparison Chart")
-    st.bar_chart(comp_df.set_index("Workout"))
 
 # ---------------- VISUALS ----------------
-
 if visual_option == "Top 4 per Workout":
 
-    st.subheader("🏆 Top 4 Performers Per Workout")
+    medals = ["🥇","🥈","🥉","4️⃣"]
 
-    medals = ["🥇", "🥈", "🥉", "4️⃣"]
-
-    workouts = [
-        ("w1_rank", "w1_score"),
-        ("w2_rank", "w2_score"),
-        ("w3_rank", "w3_score"),
-        ("w4_rank", "w4_score")
-    ]
-
-    for rank_col, score_col in workouts:
-        st.markdown(f"### {rank_col.upper()}")
+    for i in range(1,5):
+        st.markdown(f"### Workout {i}")
 
         col1, col2 = st.columns(2)
 
-        for i, div in enumerate(["Male", "Female"]):
-            with [col1, col2][i]:
-                st.markdown(f"#### {div}")
+        for j, div in enumerate(["Male","Female"]):
+            with [col1,col2][j]:
+                st.markdown(div)
+                subset = filtered_df[filtered_df["division"]==div]
 
-                subset = filtered_df[filtered_df["division"] == div]
+                top4 = subset.nsmallest(4,f"w{i}_rank_local")
 
-                if not subset.empty:
-                    top4 = subset.nsmallest(4, rank_col)
-
-                    for j, (_, row) in enumerate(top4.iterrows()):
-                        st.markdown(
-                            f"{medals[j]} **{row['name']}**  \n"
-                            f"Rank: #{row[rank_col]}  \n"
-                            f"Score: {row[score_col]}"
-                        )
+                for k, (_, row) in enumerate(top4.iterrows()):
+                    st.write(
+                        f"{medals[k]} {row['name']} "
+                        f"(L:{row[f'w{i}_rank_local']} / G:{row[f'w{i}_rank']})"
+                    )
 
 elif visual_option == "Average Workout Rank":
 
-    st.subheader("📊 Average Rank Per Workout")
-
-    avg = {w: filtered_df[w].mean() for w in ["w1_rank","w2_rank","w3_rank","w4_rank"]}
+    avg = {f"W{i}": filtered_df[f"w{i}_rank_local"].mean() for i in range(1,5)}
     st.bar_chart(pd.DataFrame.from_dict(avg, orient="index"))
 
 elif visual_option == "Rank Distribution":
-
-    st.subheader("📈 Rank Distribution")
-    st.bar_chart(filtered_df["rank"])
+    st.bar_chart(filtered_df["global_rank"])
 
 elif visual_option == "Top Overall Athletes":
-
-    st.subheader("🏆 Top Overall Athletes (Top 20)")
-
-    st.dataframe(filtered_df.head(20), width="stretch")
+    st.dataframe(filtered_df.head(20), use_container_width=True)
