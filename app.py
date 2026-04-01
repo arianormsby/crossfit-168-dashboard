@@ -86,12 +86,13 @@ def fetch_data(region):
                 entrant = row.get("entrant", {})
 
                 record = {
+                    "competitor_id": entrant.get("competitorId"),
                     "division": "Male" if division == 1 else "Female",
                     "region_rank": int(row.get("overallRank")),
                     "name": entrant.get("competitorName"),
                     "affiliate": entrant.get("affiliateName"),
                     "country": entrant.get("countryOfOriginName"),
-                    "score": row.get("overallScore")
+                    "age": entrant.get("age"),
                 }
 
                 for s in row.get("scores", []):
@@ -108,26 +109,47 @@ def fetch_data(region):
 
     return pd.DataFrame(all_rows)
 
+# ⚡ FAST worldwide (only top pages)
 @st.cache_data(ttl=1800)
-def fetch_worldwide():
-    return fetch_data(None)
+def fetch_worldwide_top(limit_pages=3):
+    all_rows = []
+
+    for division in [1, 2]:
+        for page in range(1, limit_pages + 1):
+
+            params = {
+                "quarterfinal": 263,
+                "division": division,
+                "sort": 0,
+                "page": page
+            }
+
+            r = requests.get(BASE_URL, headers=headers, params=params)
+            data = r.json()
+
+            rows = data.get("leaderboardRows", [])
+
+            for row in rows:
+                entrant = row.get("entrant", {})
+
+                all_rows.append({
+                    "competitor_id": entrant.get("competitorId"),
+                    "world_rank": int(row.get("overallRank"))
+                })
+
+    return pd.DataFrame(all_rows)
 
 # Load data
 region_df = fetch_data(region_value)
-world_df = fetch_worldwide()
+world_df = fetch_worldwide_top()
 
-# Merge worldwide rank
-merged = pd.merge(
+# Merge correctly using ID
+df = pd.merge(
     region_df,
-    world_df[["name", "division", "region_rank"]],
-    on=["name", "division"],
-    how="left",
-    suffixes=("", "_world")
+    world_df,
+    on="competitor_id",
+    how="left"
 )
-
-merged.rename(columns={"region_rank_world": "world_rank"}, inplace=True)
-
-df = merged.copy()
 
 # ---------------- FILTERS ----------------
 st.sidebar.header("Filters")
@@ -173,10 +195,11 @@ col2.metric("Best Region Rank", filtered_df["region_rank"].min() if not filtered
 st.divider()
 
 # ---------------- LEADERBOARD ----------------
-st.subheader("Leaderboard (Region vs Worldwide)")
+st.subheader("Leaderboard (Region vs World)")
 
 display_cols = [
-    "region_rank", "world_rank", "name", "division", "affiliate", "country",
+    "region_rank", "world_rank", "name", "age", "division",
+    "affiliate", "country",
     "w1_rank", "w1_score",
     "w2_rank", "w2_score",
     "w3_rank", "w3_score",
@@ -218,12 +241,11 @@ for label, rank_col, score_col in workouts:
                 for j, row in top4.iterrows():
                     st.markdown(
                         f"""
-                        {medals[j]} **#{row[rank_col]} – {row['name']}**  
+                        {medals[j]} **#{row[rank_col]} – {row['name']} ({row['age']})**  
                         🏢 {row['affiliate']}  
                         🌍 {row['country']}  
                         ⏱ {row.get(score_col, '')}  
-                        🌏 World Rank: #{row.get('world_rank', '-')}
-
+                        🌏 World: #{row.get('world_rank', '-')}
                         """
                     )
             else:
