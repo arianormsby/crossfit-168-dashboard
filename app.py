@@ -186,7 +186,8 @@ visual_option = st.sidebar.selectbox(
     [
         "Top 4 per Workout",
         "Top Overall Athletes",
-        "Affiliate Leaderboard"
+        "Affiliate Leaderboard",
+        "Top Affiliate per Workout"  
     ]
 )
 
@@ -277,3 +278,49 @@ elif visual_option == "Affiliate Leaderboard":
 
     st.subheader("🏢 Affiliate Leaderboard")
     st.dataframe(aff, use_container_width=True)
+    
+elif visual_option == "Top Affiliate per Workout":
+
+    st.subheader("🏢 Top Affiliate per Workout")
+
+    workouts = [1, 2, 3, 4]
+
+    for i in workouts:
+        st.markdown(f"### Workout {i}")
+
+        col1, col2 = st.columns(2)
+
+        for j, div in enumerate(["Male", "Female"]):
+            with [col1, col2][j]:
+
+                st.markdown(f"#### {div}")
+
+                subset = filtered_df[filtered_df["division"] == div]
+
+                if subset.empty:
+                    st.write("No data")
+                    continue
+
+                # group by affiliate
+                aff = (
+                    subset.groupby("affiliate")
+                    .agg(
+                        avg_rank=(f"w{i}_rank", "mean"),
+                        athletes=("name", "count")
+                    )
+                    .sort_values("avg_rank")
+                    .reset_index()
+                )
+
+                if not aff.empty:
+                    top = aff.iloc[0]
+
+                    st.metric("Top Affiliate", top["affiliate"])
+                    st.metric("Avg Rank", round(top["avg_rank"], 1))
+                    st.metric("Athletes", top["athletes"])
+
+                else:
+                    st.write("No data")
+
+        st.divider()
+    
