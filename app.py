@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import time
 from datetime import datetime
+import pytz
 
 st.set_page_config(page_title="CrossFit Dashboard", layout="wide")
 
@@ -34,45 +35,42 @@ region_options = {
 selected_region = st.sidebar.selectbox(
     "Region",
     list(region_options.keys()),
-    index=0  # ✅ Default = Oceania
+    index=0
 )
 
 region_value = region_options[selected_region]
 
-# ⚠️ Worldwide confirmation
-if selected_region == "Worldwide":
-    confirm = st.warning(
-        "⚠️ Worldwide data can take 20–40 seconds to load. Continue?"
-    )
-    proceed = st.button("Yes, load Worldwide data")
-
-    if not proceed:
-        st.stop()
-
-# ---------------- REFRESH ----------------
-st.markdown("### 🔄 Data Controls")
-
+# ---------------- REFRESH (CLEAN UI) ----------------
 col1, col2 = st.columns([1, 3])
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
+# Manual refresh
 with col1:
-    if st.button("🔄 Refresh Now"):
+    if st.button("🔄 Refresh"):
         st.session_state.last_refresh = time.time()
+        st.cache_data.clear()
         st.rerun()
 
-last_updated = datetime.fromtimestamp(st.session_state.last_refresh).strftime("%H:%M:%S")
+# AEDT time
+aedt = pytz.timezone("Australia/Sydney")
+last_updated = datetime.fromtimestamp(
+    st.session_state.last_refresh, tz=aedt
+).strftime("%Y-%m-%d %H:%M:%S AEDT")
 
 with col2:
     st.markdown(f"**Last updated:** {last_updated}")
 
-if time.time() - st.session_state.last_refresh > 1800:
-    st.session_state.last_refresh = time.time()
-    st.rerun()
-
-# ---------------- DATA ----------------
+# ---------------- DATA FUNCTIONS ----------------
 @st.cache_data(ttl=1800)
+def fetch_region_data(region):
+    return fetch_data(region)
+
+@st.cache_data(ttl=3600)
+def fetch_worldwide_data():
+    return fetch_data(None)
+
 def fetch_data(region):
     all_rows = []
 
@@ -100,10 +98,9 @@ def fetch_data(region):
             for row in rows:
                 entrant = row.get("entrant", {})
 
-                # ✅ SAFE AGE CONVERSION
-                raw_age = entrant.get("age")
+                # Safe age
                 try:
-                    age = int(raw_age)
+                    age = int(entrant.get("age"))
                 except:
                     age = None
 
@@ -130,7 +127,20 @@ def fetch_data(region):
 
     return pd.DataFrame(all_rows)
 
-df = fetch_data(region_value)
+# ---------------- LOAD DATA WITH UX ----------------
+if selected_region == "Worldwide":
+
+    st.warning("⚠️ Worldwide data may take 20–40 seconds to load.")
+
+    if st.button("Load Worldwide Data"):
+        with st.spinner("Loading worldwide leaderboard... (this may take ~30 seconds)"):
+            df = fetch_worldwide_data()
+    else:
+        st.stop()
+
+else:
+    with st.spinner("Loading regional data..."):
+        df = fetch_region_data(region_value)
 
 # ---------------- AGE BUCKET ----------------
 def age_bucket(age):
@@ -205,7 +215,7 @@ if search:
 
 filtered_df = filtered_df.sort_values("rank")
 
-# ---------------- LEADERBOARD + DRILLDOWN ----------------
+# ---------------- MAIN VIEW ----------------
 if visual_option == "Leaderboard + Athlete Drilldown":
 
     st.subheader("Leaderboard")
