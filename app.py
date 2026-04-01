@@ -238,6 +238,30 @@ if event.selection.rows:
 
     workout_df = pd.DataFrame(workout_data)
 
+
+
+    # ---- INSIGHTS ----
+    best = workout_df.loc[workout_df["Rank"].idxmin()]
+    worst = workout_df.loc[workout_df["Rank"].idxmax()]
+    consistency = workout_df["Rank"].var()
+
+    st.subheader("📊 Performance Insights")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Best Workout", f"{best['Workout']} (#{best['Rank']})")
+    c2.metric("Worst Workout", f"{worst['Workout']} (#{worst['Rank']})")
+    c3.metric("Consistency (Variance)", round(consistency, 2))
+
+    st.subheader("Workout Breakdown")
+
+    cols = st.columns(4)
+    for i in range(1, 5):
+        with cols[i-1]:
+            st.markdown(f"### W{i}")
+            st.metric("Rank", athlete.get(f"w{i}_rank"))
+            st.write(athlete.get(f"w{i}_score"))
+
+
 # ---------------- ATHLETE COMPARISON ----------------
 st.divider()
 st.subheader("⚔️ Athlete Comparison")
@@ -272,27 +296,6 @@ if athlete_1 and athlete_2:
 
     st.subheader("📊 Comparison Chart")
     st.bar_chart(comp_df.set_index("Workout"))
-
-    # ---- INSIGHTS ----
-    best = workout_df.loc[workout_df["Rank"].idxmin()]
-    worst = workout_df.loc[workout_df["Rank"].idxmax()]
-    consistency = workout_df["Rank"].var()
-
-    st.subheader("📊 Performance Insights")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Best Workout", f"{best['Workout']} (#{best['Rank']})")
-    c2.metric("Worst Workout", f"{worst['Workout']} (#{worst['Rank']})")
-    c3.metric("Consistency (Variance)", round(consistency, 2))
-
-    st.subheader("Workout Breakdown")
-
-    cols = st.columns(4)
-    for i in range(1, 5):
-        with cols[i-1]:
-            st.markdown(f"### W{i}")
-            st.metric("Rank", athlete.get(f"w{i}_rank"))
-            st.write(athlete.get(f"w{i}_score"))
 
 # ---------------- VISUALS ----------------
 
