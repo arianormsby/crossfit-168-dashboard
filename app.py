@@ -35,10 +35,10 @@ region_options = {
 selected_region = st.sidebar.selectbox("Region", list(region_options.keys()), index=0)
 region_value = region_options[selected_region]
 
-# ---------------- WORLDWIDE CONTROL ----------------
+# ---------------- WORLDWIDE ----------------
 world_limit = None
 if selected_region == "Worldwide":
-    st.warning("⚠️ Worldwide can take time to load")
+    st.warning("⚠️ Worldwide can take time")
 
     option = st.selectbox("Load size", ["Top 500", "Top 1000", "Full dataset"])
     limit_map = {"Top 500": 10, "Top 1000": 20, "Full dataset": None}
@@ -77,7 +77,6 @@ def fetch_data(region, max_pages=None):
         page = 1
 
         while True:
-
             if max_pages and page > max_pages:
                 break
 
@@ -135,8 +134,6 @@ with st.spinner("Loading leaderboard..."):
 df = df.convert_dtypes()
 df["age"] = pd.to_numeric(df["age"], errors="coerce")
 
-st.success(f"Loaded {len(df)} athletes")
-
 # ---------------- AGE GROUP ----------------
 def age_bucket(age):
     if pd.isna(age):
@@ -161,30 +158,19 @@ df["age_group"] = df["age"].apply(age_bucket)
 # ---------------- PERCENTILE ----------------
 df["percentile"] = (1 - (df["global_rank"] / df["global_rank"].max())) * 100
 
-# ---------------- STRENGTH PROFILE ----------------
-def strength_profile(row):
+# ---------------- PROFILE ----------------
+def profile(row):
     ranks = [row[f"w{i}_rank"] for i in range(1,5)]
-    variance = pd.Series(ranks).var()
+    var = pd.Series(ranks).var()
 
-    if variance < 50:
+    if var < 50:
         return "Balanced"
     elif min(ranks) < 50:
         return "Specialist"
     else:
         return "Inconsistent"
 
-df["profile"] = df.apply(strength_profile, axis=1)
-
-# ---------------- REORDER COLUMNS ----------------
-cols = list(df.columns)
-
-# Move global_rank after name
-cols.insert(1, cols.pop(cols.index("global_rank")))
-
-# Move age_group next to age
-cols.insert(cols.index("age")+1, cols.pop(cols.index("age_group")))
-
-df = df[cols]
+df["profile"] = df.apply(profile, axis=1)
 
 # ---------------- FILTERS ----------------
 st.sidebar.header("Filters")
@@ -199,9 +185,8 @@ visual_option = st.sidebar.selectbox(
     "Visualisation",
     [
         "Top 4 per Workout",
-        "Average Workout Rank",
-        "Rank Distribution",
-        "Top Overall Athletes"
+        "Top Overall Athletes",
+        "Affiliate Leaderboard"
     ]
 )
 
@@ -220,32 +205,38 @@ if search:
 
 filtered_df = filtered_df.sort_values("global_rank")
 
-# ---------------- POSITION COLUMN ----------------
 filtered_df.insert(0, "position", range(1, len(filtered_df)+1))
 
-# ---------------- LEADERBOARD ----------------
+# ---------------- TABLE ----------------
 st.subheader("Leaderboard")
-st.dataframe(filtered_df, use_container_width=True)
+
+event = st.dataframe(
+    filtered_df,
+    use_container_width=True,
+    on_select="rerun",
+    selection_mode="single-row"
+)
 
 # ---------------- DRILLDOWN ----------------
-st.subheader("🔍 Athlete Breakdown")
+if event.selection.rows:
+    athlete = filtered_df.iloc[event.selection.rows[0]]
 
-selected = st.selectbox("Select Athlete", filtered_df["name"].unique())
-athlete = filtered_df[filtered_df["name"] == selected].iloc[0]
+    st.divider()
+    st.subheader(f"🔍 {athlete['name']}")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Rank", athlete["global_rank"])
-col2.metric("Percentile", f"{athlete['percentile']:.1f}%")
-col3.metric("Profile", athlete["profile"])
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Rank", athlete["global_rank"])
+    col2.metric("Percentile", f"{athlete['percentile']:.1f}%")
+    col3.metric("Profile", athlete["profile"])
 
-st.markdown(f"🏢 {athlete['affiliate']} | 🌍 {athlete['country']}")
+    st.markdown(f"🏢 {athlete['affiliate']} | 🌍 {athlete['country']}")
 
-cols = st.columns(4)
-for i in range(1,5):
-    with cols[i-1]:
-        st.markdown(f"### W{i}")
-        st.metric("Rank", athlete[f"w{i}_rank"])
-        st.write(athlete[f"w{i}_score"])
+    cols = st.columns(4)
+    for i in range(1,5):
+        with cols[i-1]:
+            st.markdown(f"### W{i}")
+            st.metric("Rank", athlete[f"w{i}_rank"])
+            st.write(athlete[f"w{i}_score"])
 
 st.divider()
 
@@ -269,13 +260,20 @@ if visual_option == "Top 4 per Workout":
                 for k, (_, row) in enumerate(top4.iterrows()):
                     st.write(f"{medals[k]} {row['name']} (#{row[f'w{i}_rank']})")
 
-elif visual_option == "Average Workout Rank":
-
-    avg = {f"W{i}": filtered_df[f"w{i}_rank"].mean() for i in range(1,5)}
-    st.bar_chart(pd.DataFrame.from_dict(avg, orient="index"))
-
-elif visual_option == "Rank Distribution":
-    st.bar_chart(filtered_df["global_rank"])
-
 elif visual_option == "Top Overall Athletes":
     st.dataframe(filtered_df.head(20), use_container_width=True)
+
+elif visual_option == "Affiliate Leaderboard":
+
+    aff = (
+        filtered_df.groupby("affiliate")
+        .agg(
+            athletes=("name","count"),
+            avg_rank=("global_rank","mean")
+        )
+        .sort_values("avg_rank")
+        .reset_index()
+    )
+
+    st.subheader("🏢 Affiliate Leaderboard")
+    st.dataframe(aff, use_container_width=True)
