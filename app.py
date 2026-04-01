@@ -144,12 +144,19 @@ def fetch_data(region, max_pages=None):
 with st.spinner("Loading leaderboard..."):
     df = fetch_data(region_value, world_limit)
 
+df = df.convert_dtypes()
+
 st.success(f"Loaded {len(df)} athletes")
+
+# ---------------- CLEAN AGE COLUMN ----------------
+df["age"] = pd.to_numeric(df["age"], errors="coerce")
 
 # ---------------- AGE BUCKET ----------------
 def age_bucket(age):
-    if age is None:
+    if pd.isna(age):
         return None
+    age = int(age)
+
     if 35 <= age <= 39:
         return "35-39"
     elif 40 <= age <= 44:
