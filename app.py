@@ -15,7 +15,7 @@ headers = {
     "user-agent": "Mozilla/5.0"
 }
 
-st.title("🌍 CrossFit Quarterfinals – Performance Dashboard")
+st.title("🏋️ CrossFit Quarterfinals – Performance Dashboard")
 
 # ---------------- REGION ----------------
 st.sidebar.header("Data Scope")
@@ -86,9 +86,8 @@ def fetch_data(region):
                 entrant = row.get("entrant", {})
 
                 record = {
-                    "competitor_id": entrant.get("competitorId"),
                     "division": "Male" if division == 1 else "Female",
-                    "region_rank": int(row.get("overallRank")),
+                    "rank": int(row.get("overallRank")),
                     "name": entrant.get("competitorName"),
                     "affiliate": entrant.get("affiliateName"),
                     "country": entrant.get("countryOfOriginName"),
@@ -109,47 +108,26 @@ def fetch_data(region):
 
     return pd.DataFrame(all_rows)
 
-# ⚡ FAST worldwide (only top pages)
-@st.cache_data(ttl=1800)
-def fetch_worldwide_top(limit_pages=3):
-    all_rows = []
+df = fetch_data(region_value)
 
-    for division in [1, 2]:
-        for page in range(1, limit_pages + 1):
+# ---------------- AGE GROUP ----------------
+def age_bucket(age):
+    if age is None:
+        return None
+    if 35 <= age <= 39:
+        return "35-39"
+    elif 40 <= age <= 44:
+        return "40-44"
+    elif 45 <= age <= 49:
+        return "45-49"
+    elif 50 <= age <= 54:
+        return "50-54"
+    elif age >= 55:
+        return "55+"
+    else:
+        return "Under 35"
 
-            params = {
-                "quarterfinal": 263,
-                "division": division,
-                "sort": 0,
-                "page": page
-            }
-
-            r = requests.get(BASE_URL, headers=headers, params=params)
-            data = r.json()
-
-            rows = data.get("leaderboardRows", [])
-
-            for row in rows:
-                entrant = row.get("entrant", {})
-
-                all_rows.append({
-                    "competitor_id": entrant.get("competitorId"),
-                    "world_rank": int(row.get("overallRank"))
-                })
-
-    return pd.DataFrame(all_rows)
-
-# Load data
-region_df = fetch_data(region_value)
-world_df = fetch_worldwide_top()
-
-# Merge correctly using ID
-df = pd.merge(
-    region_df,
-    world_df,
-    on="competitor_id",
-    how="left"
-)
+df["age_group"] = df["age"].apply(age_bucket)
 
 # ---------------- FILTERS ----------------
 st.sidebar.header("Filters")
@@ -166,7 +144,23 @@ country = st.sidebar.multiselect(
     sorted(df["country"].dropna().unique()) if not df.empty else []
 )
 
+age_group = st.sidebar.multiselect(
+    "Age Group",
+    ["Under 35", "35-39", "40-44", "45-49", "50-54", "55+"]
+)
+
 search = st.sidebar.text_input("Search Athlete")
+
+visual_option = st.sidebar.selectbox(
+    "View",
+    [
+        "Leaderboard + Athlete Drilldown",
+        "Top 4 per Workout",
+        "Average Workout Rank",
+        "Rank Distribution",
+        "Top Overall Athletes"
+    ]
+)
 
 filtered_df = df.copy()
 
@@ -179,76 +173,94 @@ if affiliate:
 if country:
     filtered_df = filtered_df[filtered_df["country"].isin(country)]
 
+if age_group:
+    filtered_df = filtered_df[filtered_df["age_group"].isin(age_group)]
+
 if search:
     filtered_df = filtered_df[
         filtered_df["name"].str.contains(search, case=False)
     ]
 
-filtered_df = filtered_df.sort_values("region_rank")
+filtered_df = filtered_df.sort_values("rank")
 
-# ---------------- METRICS ----------------
-col1, col2 = st.columns(2)
+# ---------------- MAIN VIEW ----------------
+if visual_option == "Leaderboard + Athlete Drilldown":
 
-col1.metric("Athletes", len(filtered_df))
-col2.metric("Best Region Rank", filtered_df["region_rank"].min() if not filtered_df.empty else "-")
+    st.subheader("Leaderboard")
 
-st.divider()
+    event = st.dataframe(
+        filtered_df,
+        use_container_width=True,
+        on_select="rerun",
+        selection_mode="single-row"
+    )
 
-# ---------------- LEADERBOARD ----------------
-st.subheader("Leaderboard (Region vs World)")
+    selected_rows = event.selection.rows
 
-display_cols = [
-    "region_rank", "world_rank", "name", "age", "division",
-    "affiliate", "country",
-    "w1_rank", "w1_score",
-    "w2_rank", "w2_score",
-    "w3_rank", "w3_score",
-    "w4_rank", "w4_score"
-]
+    if selected_rows:
+        athlete = filtered_df.iloc[selected_rows[0]]
 
-existing_cols = [c for c in display_cols if c in filtered_df.columns]
+        st.divider()
+        st.subheader("🔍 Athlete Breakdown")
 
-st.dataframe(filtered_df[existing_cols], use_container_width=True)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Rank", athlete["rank"])
+        col2.metric("Age", athlete["age"])
+        col3.metric("Division", athlete["division"])
 
-st.divider()
+        st.markdown(f"🏢 {athlete['affiliate']}")
+        st.markdown(f"🌍 {athlete['country']}")
 
-# ---------------- TOP 4 ----------------
-st.subheader("🏆 Top 4 Performers Per Workout")
+        # Workout breakdown
+        workout_data = []
+        for i in range(1, 5):
+            workout_data.append({
+                "Workout": f"W{i}",
+                "Rank": athlete.get(f"w{i}_rank"),
+                "Score": athlete.get(f"w{i}_score")
+            })
 
-workouts = [
-    ("Workout 1", "w1_rank", "w1_score"),
-    ("Workout 2", "w2_rank", "w2_score"),
-    ("Workout 3", "w3_rank", "w3_score"),
-    ("Workout 4", "w4_rank", "w4_score"),
-]
+        workout_df = pd.DataFrame(workout_data)
 
-medals = ["🥇", "🥈", "🥉", "4️⃣"]
+        st.dataframe(workout_df, use_container_width=True)
+        st.bar_chart(workout_df.set_index("Workout")["Rank"])
 
-for label, rank_col, score_col in workouts:
-    st.markdown(f"## {label}")
+elif visual_option == "Top 4 per Workout":
 
-    col1, col2 = st.columns(2)
+    st.subheader("🏆 Top 4 Performers Per Workout")
 
-    for i, div in enumerate(["Male", "Female"]):
-        with [col1, col2][i]:
-            st.markdown(f"### {div}")
+    workouts = ["w1_rank", "w2_rank", "w3_rank", "w4_rank"]
+    medals = ["🥇", "🥈", "🥉", "4️⃣"]
 
-            subset = filtered_df[filtered_df["division"] == div]
+    for w in workouts:
+        st.markdown(f"## {w.upper()}")
 
-            if rank_col in subset.columns and not subset.empty:
-                top4 = subset.nsmallest(4, rank_col).reset_index(drop=True)
+        col1, col2 = st.columns(2)
 
-                for j, row in top4.iterrows():
-                    st.markdown(
-                        f"""
-                        {medals[j]} **#{row[rank_col]} – {row['name']} ({row['age']})**  
-                        🏢 {row['affiliate']}  
-                        🌍 {row['country']}  
-                        ⏱ {row.get(score_col, '')}  
-                        🌏 World: #{row.get('world_rank', '-')}
-                        """
-                    )
-            else:
-                st.write("No data")
+        for i, div in enumerate(["Male", "Female"]):
+            with [col1, col2][i]:
+                st.markdown(f"### {div}")
+                subset = filtered_df[filtered_df["division"] == div]
 
-    st.divider()
+                if not subset.empty:
+                    top4 = subset.nsmallest(4, w)
+
+                    for j, row in top4.iterrows():
+                        st.markdown(f"{medals[j]} **#{row[w]} – {row['name']}**")
+
+elif visual_option == "Average Workout Rank":
+
+    st.subheader("📊 Average Rank Per Workout")
+
+    avg = {w: filtered_df[w].mean() for w in ["w1_rank","w2_rank","w3_rank","w4_rank"]}
+    st.bar_chart(pd.DataFrame.from_dict(avg, orient="index"))
+
+elif visual_option == "Rank Distribution":
+
+    st.subheader("📈 Rank Distribution")
+    st.bar_chart(filtered_df["rank"])
+
+elif visual_option == "Top Overall Athletes":
+
+    st.subheader("🏆 Top Overall Athletes")
+    st.dataframe(filtered_df.head(10), use_container_width=True)
