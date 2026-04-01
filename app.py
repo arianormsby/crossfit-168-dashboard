@@ -247,13 +247,28 @@ if visual_option == "Top 4 per Workout":
 
     medals = ["🥇", "🥈", "🥉", "4️⃣"]
 
-    for w in ["w1_rank","w2_rank","w3_rank","w4_rank"]:
+    workouts = ["w1_rank", "w2_rank", "w3_rank", "w4_rank"]
+
+    for w in workouts:
         st.markdown(f"### {w.upper()}")
 
-        top4 = filtered_df.nsmallest(4, w)
+        col1, col2 = st.columns(2)
 
-        for i, (_, row) in enumerate(top4.iterrows()):
-            st.markdown(f"{medals[i]} {row['name']} (#{row[w]})")
+        for i, div in enumerate(["Male", "Female"]):
+            with [col1, col2][i]:
+                st.markdown(f"#### {div}")
+
+                subset = filtered_df[filtered_df["division"] == div]
+
+                if not subset.empty:
+                    top4 = subset.nsmallest(4, w)
+
+                    for j, (_, row) in enumerate(top4.iterrows()):
+                        st.markdown(
+                            f"{medals[j]} {row['name']} (#{row[w]})"
+                        )
+                else:
+                    st.write("No data")
 
 elif visual_option == "Average Workout Rank":
 
@@ -269,5 +284,6 @@ elif visual_option == "Rank Distribution":
 
 elif visual_option == "Top Overall Athletes":
 
-    st.subheader("🏆 Top Overall Athletes")
-    st.dataframe(filtered_df.head(10), width="stretch")
+    st.subheader("🏆 Top Overall Athletes (Top 20)")
+
+    st.dataframe(filtered_df.head(20), width="stretch")
