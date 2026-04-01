@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import time
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 
 st.set_page_config(page_title="CrossFit Dashboard", layout="wide")
 
@@ -32,52 +32,69 @@ region_options = {
     "Africa": 6
 }
 
-selected_region = st.sidebar.selectbox(
-    "Region",
-    list(region_options.keys()),
-    index=0
-)
-
+selected_region = st.sidebar.selectbox("Region", list(region_options.keys()), index=0)
 region_value = region_options[selected_region]
 
-# ---------------- REFRESH (CLEAN UI) ----------------
+# ---------------- WORLDWIDE OPTIONS ----------------
+world_limit = None
+if selected_region == "Worldwide":
+    st.warning("⚠️ Worldwide can take time to load")
+
+    world_limit = st.selectbox(
+        "Load size",
+        ["Top 500", "Top 1000", "Full dataset"],
+        index=0
+    )
+
+    limit_map = {
+        "Top 500": 10,
+        "Top 1000": 20,
+        "Full dataset": None
+    }
+
+    world_limit = limit_map[world_limit]
+
+    if not st.button("Load Worldwide Data"):
+        st.stop()
+
+# ---------------- REFRESH ----------------
 col1, col2 = st.columns([1, 3])
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-# Manual refresh
 with col1:
     if st.button("🔄 Refresh"):
         st.session_state.last_refresh = time.time()
         st.cache_data.clear()
         st.rerun()
 
-# AEDT time
-aedt = pytz.timezone("Australia/Sydney")
-last_updated = datetime.fromtimestamp(
-    st.session_state.last_refresh, tz=aedt
-).strftime("%Y-%m-%d %H:%M:%S AEDT")
+# AEDT time using zoneinfo
+aedt_time = datetime.fromtimestamp(
+    st.session_state.last_refresh,
+    tz=ZoneInfo("Australia/Sydney")
+).strftime("%Y-%m-%d %H:%M:%S")
 
 with col2:
-    st.markdown(f"**Last updated:** {last_updated}")
+    st.markdown(f"**Last updated (AEDT):** {aedt_time}")
 
-# ---------------- DATA FUNCTIONS ----------------
+# ---------------- DATA FETCH ----------------
 @st.cache_data(ttl=1800)
-def fetch_region_data(region):
-    return fetch_data(region)
+def fetch_data(region, max_pages=None):
 
-@st.cache_data(ttl=3600)
-def fetch_worldwide_data():
-    return fetch_data(None)
+    progress = st.progress(0)
+    status = st.empty()
 
-def fetch_data(region):
     all_rows = []
 
     for division in [1, 2]:
         page = 1
 
         while True:
+
+            if max_pages and page > max_pages:
+                break
+
             params = {
                 "quarterfinal": 263,
                 "division": division,
@@ -95,10 +112,16 @@ def fetch_data(region):
             if not rows:
                 break
 
+            total_pages = data["pagination"]["totalPages"]
+
+            # progress %
+            progress_val = min(page / total_pages, 1.0)
+            progress.progress(progress_val)
+            status.text(f"Loading page {page}/{total_pages}")
+
             for row in rows:
                 entrant = row.get("entrant", {})
 
-                # Safe age
                 try:
                     age = int(entrant.get("age"))
                 except:
@@ -120,27 +143,21 @@ def fetch_data(region):
 
                 all_rows.append(record)
 
-            if page >= data["pagination"]["totalPages"]:
+            if page >= total_pages:
                 break
 
             page += 1
 
+    progress.empty()
+    status.empty()
+
     return pd.DataFrame(all_rows)
 
-# ---------------- LOAD DATA WITH UX ----------------
-if selected_region == "Worldwide":
+# ---------------- LOAD DATA ----------------
+with st.spinner("Loading leaderboard..."):
+    df = fetch_data(region_value, world_limit)
 
-    st.warning("⚠️ Worldwide data may take 20–40 seconds to load.")
-
-    if st.button("Load Worldwide Data"):
-        with st.spinner("Loading worldwide leaderboard... (this may take ~30 seconds)"):
-            df = fetch_worldwide_data()
-    else:
-        st.stop()
-
-else:
-    with st.spinner("Loading regional data..."):
-        df = fetch_region_data(region_value)
+st.success(f"Loaded {len(df)} athletes")
 
 # ---------------- AGE BUCKET ----------------
 def age_bucket(age):
@@ -166,21 +183,9 @@ st.sidebar.header("Filters")
 
 division = st.sidebar.multiselect("Division", ["Male", "Female"], default=["Male", "Female"])
 
-affiliate = st.sidebar.multiselect(
-    "Affiliate",
-    sorted(df["affiliate"].dropna().unique()) if not df.empty else []
-)
-
-country = st.sidebar.multiselect(
-    "Country",
-    sorted(df["country"].dropna().unique()) if not df.empty else []
-)
-
-age_group = st.sidebar.multiselect(
-    "Age Group",
-    ["Under 35", "35-39", "40-44", "45-49", "50-54", "55+"]
-)
-
+affiliate = st.sidebar.multiselect("Affiliate", sorted(df["affiliate"].dropna().unique()))
+country = st.sidebar.multiselect("Country", sorted(df["country"].dropna().unique()))
+age_group = st.sidebar.multiselect("Age Group", ["Under 35", "35-39", "40-44", "45-49", "50-54", "55+"])
 search = st.sidebar.text_input("Search Athlete")
 
 visual_option = st.sidebar.selectbox(
@@ -198,27 +203,19 @@ filtered_df = df.copy()
 
 if division:
     filtered_df = filtered_df[filtered_df["division"].isin(division)]
-
 if affiliate:
     filtered_df = filtered_df[filtered_df["affiliate"].isin(affiliate)]
-
 if country:
     filtered_df = filtered_df[filtered_df["country"].isin(country)]
-
 if age_group:
     filtered_df = filtered_df[filtered_df["age_group"].isin(age_group)]
-
 if search:
-    filtered_df = filtered_df[
-        filtered_df["name"].str.contains(search, case=False)
-    ]
+    filtered_df = filtered_df[filtered_df["name"].str.contains(search, case=False)]
 
 filtered_df = filtered_df.sort_values("rank")
 
 # ---------------- MAIN VIEW ----------------
 if visual_option == "Leaderboard + Athlete Drilldown":
-
-    st.subheader("Leaderboard")
 
     event = st.dataframe(
         filtered_df,
@@ -233,23 +230,7 @@ if visual_option == "Leaderboard + Athlete Drilldown":
         st.divider()
         st.subheader("🔍 Athlete Breakdown")
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Rank", athlete["rank"])
-        col2.metric("Age", athlete["age"])
-        col3.metric("Division", athlete["division"])
+        st.write(athlete)
 
-        st.markdown(f"🏢 {athlete['affiliate']}")
-        st.markdown(f"🌍 {athlete['country']}")
-
-        workout_data = []
-        for i in range(1, 5):
-            workout_data.append({
-                "Workout": f"W{i}",
-                "Rank": athlete.get(f"w{i}_rank"),
-                "Score": athlete.get(f"w{i}_score")
-            })
-
-        workout_df = pd.DataFrame(workout_data)
-
-        st.dataframe(workout_df, width="stretch")
-        st.bar_chart(workout_df.set_index("Workout")["Rank"])
+elif visual_option == "Top Overall Athletes":
+    st.dataframe(filtered_df.head(10), width="stretch")
