@@ -207,6 +207,17 @@ if search:
 
 filtered_df = filtered_df.sort_values("rank")
 
+# ---------------- RECALCULATE WORKOUT RANKS ----------------
+for i in range(1, 5):
+    rank_col = f"w{i}_rank"
+
+    if rank_col in filtered_df.columns:
+        filtered_df[rank_col] = (
+            filtered_df[rank_col]
+            .rank(method="min")
+            .astype(int)
+        )
+
 # ---------------- ADD POSITION COLUMN ----------------
 filtered_df.insert(0, "position", range(1, len(filtered_df) + 1))
 
