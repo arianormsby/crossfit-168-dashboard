@@ -185,7 +185,6 @@ visual_option = st.sidebar.selectbox(
     "Visualisation",
     [
         "Top 4 per Workout",
-        "Top Overall Athletes",
         "Affiliate Leaderboard",
         "Top Affiliate per Workout"  
     ]
@@ -207,6 +206,29 @@ if search:
 filtered_df = filtered_df.sort_values("global_rank")
 
 filtered_df.insert(0, "position", range(1, len(filtered_df)+1))
+
+# ---------------- COLUMN ORDER ----------------
+desired_order = [
+    "position",
+    "global_rank",
+    "percentile",
+    "division",
+    "name",
+    "affiliate",
+    "country",
+    "age",
+    "age_group",
+    "w1_rank", "w1_score",
+    "w2_rank", "w2_score",
+    "w3_rank", "w3_score",
+    "w4_rank", "w4_score",
+    "profile"
+]
+
+# Keep only columns that exist (safe guard)
+ordered_cols = [col for col in desired_order if col in filtered_df.columns]
+
+filtered_df = filtered_df[ordered_cols]
 
 # ---------------- TABLE ----------------
 st.subheader("Leaderboard")
@@ -261,9 +283,6 @@ if visual_option == "Top 4 per Workout":
                 for k, (_, row) in enumerate(top4.iterrows()):
                     st.write(f"{medals[k]} {row['name']} (#{row[f'w{i}_rank']})")
 
-elif visual_option == "Top Overall Athletes":
-    st.dataframe(filtered_df.head(20), use_container_width=True)
-
 elif visual_option == "Affiliate Leaderboard":
 
     aff = (
@@ -278,7 +297,7 @@ elif visual_option == "Affiliate Leaderboard":
 
     st.subheader("🏢 Affiliate Leaderboard")
     st.dataframe(aff, use_container_width=True)
-    
+
 elif visual_option == "Top Affiliate per Workout":
 
     st.subheader("🏢 Top Affiliate per Workout")
