@@ -4,7 +4,7 @@ import requests
 import time
 from datetime import datetime
 
-st.set_page_config(page_title="CrossFit 168 Dashboard", layout="wide")
+st.set_page_config(page_title="CrossFit Dashboard", layout="wide")
 
 BASE_URL = "https://c3po.crossfit.com/api/leaderboards/v2/competitions/quarterfinals/2026/leaderboards"
 
@@ -15,9 +15,26 @@ headers = {
     "user-agent": "Mozilla/5.0"
 }
 
-st.title("🏋️ CrossFit 168 – Performance Dashboard")
+st.title("🌍 CrossFit Quarterfinals – Performance Dashboard")
 
-# ---------------- REFRESH CONTROLS ----------------
+# ---------------- REGION ----------------
+st.sidebar.header("Data Scope")
+
+region_options = {
+    "Worldwide": None,
+    "Oceania": 32,
+    "North America East": 1,
+    "North America West": 2,
+    "Europe": 3,
+    "Asia": 4,
+    "South America": 5,
+    "Africa": 6
+}
+
+selected_region = st.sidebar.selectbox("Region", list(region_options.keys()))
+region_value = region_options[selected_region]
+
+# ---------------- REFRESH ----------------
 st.markdown("### 🔄 Data Controls")
 
 col1, col2 = st.columns([1, 3])
@@ -25,26 +42,23 @@ col1, col2 = st.columns([1, 3])
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-# Manual refresh
 with col1:
     if st.button("🔄 Refresh Now"):
         st.session_state.last_refresh = time.time()
         st.rerun()
 
-# Last updated
 last_updated = datetime.fromtimestamp(st.session_state.last_refresh).strftime("%H:%M:%S")
 
 with col2:
     st.markdown(f"**Last updated:** {last_updated}")
 
-# Auto refresh every 30 minutes
 if time.time() - st.session_state.last_refresh > 1800:
     st.session_state.last_refresh = time.time()
     st.rerun()
 
-# ---------------- DATA FETCH ----------------
+# ---------------- DATA ----------------
 @st.cache_data(ttl=1800)
-def fetch_data():
+def fetch_data(region):
     all_rows = []
 
     for division in [1, 2]:
@@ -54,10 +68,12 @@ def fetch_data():
             params = {
                 "quarterfinal": 263,
                 "division": division,
-                "region": 32,
                 "sort": 0,
                 "page": page
             }
+
+            if region is not None:
+                params["region"] = region
 
             r = requests.get(BASE_URL, headers=headers, params=params)
             data = r.json()
@@ -68,24 +84,22 @@ def fetch_data():
 
             for row in rows:
                 entrant = row.get("entrant", {})
-                affiliate = entrant.get("affiliateName", "")
 
-                if affiliate and "crossfit 168" in affiliate.lower():
-                    record = {
-                        "division": "Male" if division == 1 else "Female",
-                        "rank": int(row.get("overallRank")),
-                        "name": entrant.get("competitorName"),
-                        "affiliate": affiliate,
-                        "score": row.get("overallScore")
-                    }
+                record = {
+                    "division": "Male" if division == 1 else "Female",
+                    "region_rank": int(row.get("overallRank")),
+                    "name": entrant.get("competitorName"),
+                    "affiliate": entrant.get("affiliateName"),
+                    "country": entrant.get("countryOfOriginName"),
+                    "score": row.get("overallScore")
+                }
 
-                    # Workout data
-                    for s in row.get("scores", []):
-                        i = s.get("ordinal")
-                        record[f"w{i}_rank"] = int(s.get("rank"))
-                        record[f"w{i}_score"] = s.get("scoreDisplay")
+                for s in row.get("scores", []):
+                    i = s.get("ordinal")
+                    record[f"w{i}_rank"] = int(s.get("rank"))
+                    record[f"w{i}_score"] = s.get("scoreDisplay")
 
-                    all_rows.append(record)
+                all_rows.append(record)
 
             if page >= data["pagination"]["totalPages"]:
                 break
@@ -94,55 +108,88 @@ def fetch_data():
 
     return pd.DataFrame(all_rows)
 
-df = fetch_data()
+@st.cache_data(ttl=1800)
+def fetch_worldwide():
+    return fetch_data(None)
+
+# Load data
+region_df = fetch_data(region_value)
+world_df = fetch_worldwide()
+
+# Merge worldwide rank
+merged = pd.merge(
+    region_df,
+    world_df[["name", "division", "region_rank"]],
+    on=["name", "division"],
+    how="left",
+    suffixes=("", "_world")
+)
+
+merged.rename(columns={"region_rank_world": "world_rank"}, inplace=True)
+
+df = merged.copy()
 
 # ---------------- FILTERS ----------------
 st.sidebar.header("Filters")
 
-division = st.sidebar.selectbox("Division", ["All", "Male", "Female"])
+division = st.sidebar.multiselect("Division", ["Male", "Female"], default=["Male", "Female"])
 
-affiliate_list = ["All"]
-if not df.empty:
-    affiliate_list += sorted(df["affiliate"].dropna().unique().tolist())
+affiliate = st.sidebar.multiselect(
+    "Affiliate",
+    sorted(df["affiliate"].dropna().unique()) if not df.empty else []
+)
 
-affiliate = st.sidebar.selectbox("Affiliate", affiliate_list)
+country = st.sidebar.multiselect(
+    "Country",
+    sorted(df["country"].dropna().unique()) if not df.empty else []
+)
+
+search = st.sidebar.text_input("Search Athlete")
 
 filtered_df = df.copy()
 
-if division != "All":
-    filtered_df = filtered_df[filtered_df["division"] == division]
+if division:
+    filtered_df = filtered_df[filtered_df["division"].isin(division)]
 
-if affiliate != "All":
-    filtered_df = filtered_df[filtered_df["affiliate"] == affiliate]
+if affiliate:
+    filtered_df = filtered_df[filtered_df["affiliate"].isin(affiliate)]
 
-filtered_df = filtered_df.sort_values("rank")
+if country:
+    filtered_df = filtered_df[filtered_df["country"].isin(country)]
+
+if search:
+    filtered_df = filtered_df[
+        filtered_df["name"].str.contains(search, case=False)
+    ]
+
+filtered_df = filtered_df.sort_values("region_rank")
 
 # ---------------- METRICS ----------------
 col1, col2 = st.columns(2)
 
 col1.metric("Athletes", len(filtered_df))
-col2.metric("Best Rank", filtered_df["rank"].min() if not filtered_df.empty else "-")
+col2.metric("Best Region Rank", filtered_df["region_rank"].min() if not filtered_df.empty else "-")
 
 st.divider()
 
 # ---------------- LEADERBOARD ----------------
-st.subheader("Leaderboard")
+st.subheader("Leaderboard (Region vs Worldwide)")
 
 display_cols = [
-    "rank", "name", "division", "affiliate",
+    "region_rank", "world_rank", "name", "division", "affiliate", "country",
     "w1_rank", "w1_score",
     "w2_rank", "w2_score",
     "w3_rank", "w3_score",
     "w4_rank", "w4_score"
 ]
 
-existing_cols = [col for col in display_cols if col in filtered_df.columns]
+existing_cols = [c for c in display_cols if c in filtered_df.columns]
 
 st.dataframe(filtered_df[existing_cols], use_container_width=True)
 
 st.divider()
 
-# ---------------- TOP 4 PER WORKOUT ----------------
+# ---------------- TOP 4 ----------------
 st.subheader("🏆 Top 4 Performers Per Workout")
 
 workouts = [
@@ -159,42 +206,27 @@ for label, rank_col, score_col in workouts:
 
     col1, col2 = st.columns(2)
 
-    # Male
-    with col1:
-        st.markdown("### 👨 Male")
-        male_df = filtered_df[filtered_df["division"] == "Male"]
+    for i, div in enumerate(["Male", "Female"]):
+        with [col1, col2][i]:
+            st.markdown(f"### {div}")
 
-        if rank_col in male_df.columns and not male_df.empty:
-            top4 = male_df.nsmallest(4, rank_col).reset_index(drop=True)
+            subset = filtered_df[filtered_df["division"] == div]
 
-            for i, row in top4.iterrows():
-                st.markdown(
-                    f"""
-                    {medals[i]} **#{row[rank_col]} – {row['name']}**  
-                    🏢 {row['affiliate']}  
-                    ⏱ {row.get(score_col, '')}
-                    """
-                )
-        else:
-            st.write("No data")
+            if rank_col in subset.columns and not subset.empty:
+                top4 = subset.nsmallest(4, rank_col).reset_index(drop=True)
 
-    # Female
-    with col2:
-        st.markdown("### 👩 Female")
-        female_df = filtered_df[filtered_df["division"] == "Female"]
+                for j, row in top4.iterrows():
+                    st.markdown(
+                        f"""
+                        {medals[j]} **#{row[rank_col]} – {row['name']}**  
+                        🏢 {row['affiliate']}  
+                        🌍 {row['country']}  
+                        ⏱ {row.get(score_col, '')}  
+                        🌏 World Rank: #{row.get('world_rank', '-')}
 
-        if rank_col in female_df.columns and not female_df.empty:
-            top4 = female_df.nsmallest(4, rank_col).reset_index(drop=True)
-
-            for i, row in top4.iterrows():
-                st.markdown(
-                    f"""
-                    {medals[i]} **#{row[rank_col]} – {row['name']}**  
-                    🏢 {row['affiliate']}  
-                    ⏱ {row.get(score_col, '')}
-                    """
-                )
-        else:
-            st.write("No data")
+                        """
+                    )
+            else:
+                st.write("No data")
 
     st.divider()
